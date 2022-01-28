@@ -127,7 +127,7 @@ class MaskedLabelWidget(QtWidgets.QWidget):
         self._target_hsize = target_h_size
         
         self._trial_num = 0
-        self._trial_num_max = 100
+        self._trial_num_max = 100   #number of trials
 
         self._trial_started = False
         
@@ -137,16 +137,16 @@ class MaskedLabelWidget(QtWidgets.QWidget):
         
         self._target_timer = QtCore.QTimer()
         self._target_timer.setSingleShot(True)
-        self._target_timer.timeout.connect(self.display_single_target)
+        self._target_timer.timeout.connect(self.display_single_target)   #code for random time of target appearance
         
         self._mask_timer = QtCore.QTimer()
         self._mask_timer.setSingleShot(True)
-        self._mask_timer.timeout.connect(self.show_all_targets)
+        self._mask_timer.timeout.connect(self.show_all_targets)   #code for random time of appearance of the mask
         
         self._cancel_timer = QtCore.QTimer()
         self._cancel_timer.setSingleShot(True)
         self._cancel_timer.timeout.connect(self.cancel_trial)
-        self._cancel_timer.setInterval(2000)
+        self._cancel_timer.setInterval(2000)     #code for the cancel of the trial after 2 seconds of inactivity
        
 
         self.build()
@@ -174,7 +174,7 @@ class MaskedLabelWidget(QtWidgets.QWidget):
         if (idx == 0 & self._trial_num < self._trial_num_max):
             if (self._trial_started == False):
                 self._target_widget.set_target_color(idx, QtGui.QColor(255, 0, 0, 255))
-                # Start a time to wait for the targets to appear
+                # Start a time to wait for the target to appear
                 delta1 = np.random.randint(100, 500)
                 
                 self._target_timer.setInterval(delta1)
@@ -182,10 +182,10 @@ class MaskedLabelWidget(QtWidgets.QWidget):
                 self._cancel_timer.start()
                 '''QtCore.QTimer.singleShot(delta1, self.display_single_target)'''
                 self._trial_started = True
-                self._trial_data ["delta1"] = delta1
+                self._trial_data ["delta1"] = delta1    #continue the trial because not yet to 100 trials
         elif (self._trial_num >= self._trial_num_max):
             self._parent.close()
-            '''self._parent._app.quit()'''
+            '''self._parent._app.quit()'''   #close the application when there was 100 trials
             
         else:
             if (self._trial_started == True):
@@ -195,16 +195,20 @@ class MaskedLabelWidget(QtWidgets.QWidget):
                 self._target_widget.clear_color()
                 self._target_widget.rebuild()
                 self._target_crossed_time = datetime.datetime.now()
+                #calculate the latency so the time a target is crossed minus the time of appearance of the target
                 latency = (self._target_crossed_time - self._target_show_time).microseconds
                 self._trial_data ["latency"] = latency
                 self._trial_data ["crossed_target_number"] = idx
                 self._trial_data ["crossed_target_number"] = idx == self._trial_data ["display_target_number"]
+                #add 1 each time you made a trial tp finally reach 100
                 self._trial_num += 1
                 print(self._trial_num)
-                self.save_trials()
+                #save the trials at the end in a specific file
+                self.save_trials()   
                 
     
     def cancel_trial(self):
+        #function to consider a false condition so when the subject crossed a wrong target 
         self._trial_data ["latency"] = -1
         self._trial_data ["crossed_target_number"] = -1
         self._trial_data ["crossed_target_number"] = False
@@ -214,6 +218,7 @@ class MaskedLabelWidget(QtWidgets.QWidget):
         self.save_trials()
     
     def save_trials(self):
+        #function to save the trials with for each the delta1, delta2, latency, crossed target number and display target number
         self._target_timer.stop()
         self._cancel_timer.stop()
         self._mask_timer.stop()
@@ -247,6 +252,7 @@ class MaskedLabelWidget(QtWidgets.QWidget):
         
 
     def show_all_targets(self):
+        #appearance of the mask
         for ii in range(self._number_of_targets):
             self._target_widget.set_target_color(ii + 1, QtGui.QColor(125, 125, 125, 125))
 
@@ -285,10 +291,10 @@ class MaskedLabApplication(QtWidgets.QMainWindow):
 if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
     w = MaskedLabApplication(filename="/Users/thirionmac/Documents/CLH005.data", app = app)
-#don't forget to change the pathway!!!!!!!!!!!!!
+#careful to use a different pathway for each subject to be right encode
     w.show()
 
     app.exec_()
-    
+    #close the application
     sys.exit()
     
