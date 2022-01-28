@@ -23,7 +23,7 @@ class MaskedLabelDrawer(QtWidgets.QGraphicsView):
         self._all_paths_items = None   
         self._in_targets = [False] * (self._number_of_targets + 1)
 
-        # Color of the targets
+        # Color of the targets 
         self._central_target_pen = QtGui.QPen(QtGui.QColor(125, 125, 255, 255), 15)
         self._target_pen = QtGui.QPen(QtGui.QColor(125, 125, 125, 0), 5)
         self._all_pens = []
@@ -125,13 +125,13 @@ class MaskedLabelWidget(QtWidgets.QWidget):
         self._number_of_targets = number_of_targets
         self._target_distance = target_distance
         self._target_hsize = target_h_size
-        
+        #establishment of the counter, trial num is equal to 0 at first but then it'll be increase of 1 each time a trial is done, when trial num is equal to 100 it'll stop the application
         self._trial_num = 0
         self._trial_num_max = 100   #number of trials
 
         self._trial_started = False
         
-        self._trial_data = {}
+        self._trial_data = {}   #created dictionnary to put data
         
         self._filename = filename
         
@@ -174,7 +174,7 @@ class MaskedLabelWidget(QtWidgets.QWidget):
         if (idx == 0 & self._trial_num < self._trial_num_max):
             if (self._trial_started == False):
                 self._target_widget.set_target_color(idx, QtGui.QColor(255, 0, 0, 255))
-                # Start a time to wait for the target to appear
+                # Start a time to wait for the target to appear from 100 ms to 500ms
                 delta1 = np.random.randint(100, 500)
                 
                 self._target_timer.setInterval(delta1)
@@ -203,7 +203,7 @@ class MaskedLabelWidget(QtWidgets.QWidget):
                 #add 1 each time you made a trial tp finally reach 100
                 self._trial_num += 1
                 print(self._trial_num)
-                #save the trials at the end in a specific file
+                #save the trials at the end in a specific and separated file
                 self.save_trials()   
                 
     
@@ -291,7 +291,7 @@ class MaskedLabApplication(QtWidgets.QMainWindow):
 if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
     w = MaskedLabApplication(filename="/Users/thirionmac/Documents/CLH005.data", app = app)
-#careful to use a different pathway for each subject to be right encode
+#careful to use a different pathway each 100 trials for each subject to be right encoded
     w.show()
 
     app.exec_()
