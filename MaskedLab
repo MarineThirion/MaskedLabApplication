@@ -1,0 +1,294 @@
+from PyQt5 import QtCore, QtGui, QtWidgets
+import sys
+import argparse
+import os
+import glob
+import numpy as np
+import datetime
+import sys
+
+class MaskedLabelDrawer(QtWidgets.QGraphicsView):
+    target_crossed = QtCore.pyqtSignal(int)
+    def __init__(self, parent, scene, number_of_targets = 4, target_distance = .30, target_h_size = .01):
+        super().__init__(parent)
+        self._parent = parent
+        self._scene = scene
+
+        self._number_of_targets = number_of_targets
+        self._target_distance = target_distance
+        self._target_hsize = target_h_size
+
+        self._targets_list = []
+        self._path = []
+        self._all_paths_items = None   
+        self._in_targets = [False] * (self._number_of_targets + 1)
+
+        # Color of the targets
+        self._central_target_pen = QtGui.QPen(QtGui.QColor(125, 125, 255, 255), 15)
+        self._target_pen = QtGui.QPen(QtGui.QColor(125, 125, 125, 0), 5)
+        self._all_pens = []
+
+        # Color of the goal
+        self._target_mouse_pen = QtGui.QPen(QtGui.QColor(255, 125, 125, 255), 5)
+
+        self.setTransformationAnchor(QtWidgets.QGraphicsView.AnchorUnderMouse)
+        self.setResizeAnchor(QtWidgets.QGraphicsView.AnchorUnderMouse)
+        self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        self.setScene(self._scene)
+
+        self.rebuild()
+
+    def build_targets_parameters(self):
+        angles_for_tar = np.linspace(0, 2 * np.pi, self._number_of_targets + 1)[:-1]
+
+        self._center_screen = [0, 0]
+
+        self._targets_list = []
+        self._path = []
+
+        self._targets_list.append({"num": -1, "pos": [self._center_screen[0], self._center_screen[1]], "radius": self._target_hsize * self.size().height()})
+        self._path.append(QtGui.QPainterPath())
+        self._path[-1].addEllipse(self._targets_list[-1]["pos"][0] - self._targets_list[-1]["radius"], 
+            self._targets_list[-1]["pos"][1] - self._targets_list[-1]["radius"], 
+            self._targets_list[-1]["radius"] * 2 + 1, self._targets_list[-1]["radius"] * 2 + 1)
+        self._all_pens.append(self._central_target_pen)
+        for ii in range(self._number_of_targets):
+            self._targets_list.append({"num": ii, "pos": [self._center_screen[0] + self._target_distance * self.size().height() * np.cos(angles_for_tar[ii]), 
+                self._center_screen[1] + self._target_distance * self.size().height() * np.sin(angles_for_tar[ii])], "radius": self._target_hsize * self.size().height()})
+            self._path.append(QtGui.QPainterPath())
+            self._path[-1].addEllipse(self._targets_list[-1]["pos"][0] - self._targets_list[-1]["radius"], 
+                self._targets_list[-1]["pos"][1] - self._targets_list[-1]["radius"], 
+                self._targets_list[-1]["radius"] * 2 + 1, self._targets_list[-1]["radius"] * 2 + 1)
+            self._all_pens.append(self._target_pen)
+
+    def boundingRect(self):
+        self._center_screen = self.size()
+        return QtCore.QRectF(self._center_screen.width() / 2 - self._target_distance * self._center_screen.height(), 
+                self._center_screen.height() / 2  - self._target_distance * self._center_screen.height(), 
+                self._target_distance * self._center_screen.height() * 2 + 1, self._target_distance * self._center_screen.height() * 2 + 1)
+
+    def add_to_scene(self):
+        if (self._all_paths_items is None):
+            self._all_paths_items = []
+            for path, pen in zip(self._path, self._all_pens):
+                self._all_paths_items.append(self._scene.addPath(path, pen))
+        else:
+            for current_path, path, pen in zip(self._all_paths_items, self._path, self._all_pens):
+                current_path.setPath(path)
+                current_path.setPen(pen)
+
+    def resizeEvent(self, event):
+        self.rebuild()
+        super().resizeEvent(event)
+
+    def clear_color(self):
+        self._all_pens = []
+        self._all_pens.append(self._central_target_pen)
+        for ii in range(self._number_of_targets):
+            self._all_pens.append(self._target_pen)
+
+    def set_target_color(self, idx, color):
+        # This is to prevent the fact that we could overwrite something pointless.
+        if idx > len(self._all_pens):
+            return
+
+        # Now we assign the correct color to the desired handle
+        self._all_pens[idx] = QtGui.QPen(color, 15)
+
+        self.build_targets_parameters()
+        self.add_to_scene()
+
+    def mouseMoveEvent(self, event):
+        msMouse = self.mapToScene(event.pos())
+
+        for path_item, idx in zip(self._all_paths_items, range(len(self._all_paths_items))):
+            if (path_item.isUnderMouse()):
+                if self._in_targets[idx] == False:
+                    self._in_targets[idx] = True
+                    self.target_crossed.emit(idx)
+                    super().mouseMoveEvent(event)
+                    return
+
+        self._in_targets = [False] * (self._number_of_targets + 1)
+
+    def rebuild(self):
+        self.build_targets_parameters()
+        self.add_to_scene()
+
+
+class MaskedLabelWidget(QtWidgets.QWidget):
+    def __init__(self, parent=None, filename=None, number_of_targets = 12, target_distance = .3, target_h_size = .025):
+        super().__init__(parent)
+        self._parent = parent
+
+        self._number_of_targets = number_of_targets
+        self._target_distance = target_distance
+        self._target_hsize = target_h_size
+        
+        self._trial_num = 0
+        self._trial_num_max = 100
+
+        self._trial_started = False
+        
+        self._trial_data = {}
+        
+        self._filename = filename
+        
+        self._target_timer = QtCore.QTimer()
+        self._target_timer.setSingleShot(True)
+        self._target_timer.timeout.connect(self.display_single_target)
+        
+        self._mask_timer = QtCore.QTimer()
+        self._mask_timer.setSingleShot(True)
+        self._mask_timer.timeout.connect(self.show_all_targets)
+        
+        self._cancel_timer = QtCore.QTimer()
+        self._cancel_timer.setSingleShot(True)
+        self._cancel_timer.timeout.connect(self.cancel_trial)
+        self._cancel_timer.setInterval(2000)
+       
+
+        self.build()
+
+    def build(self):
+        self._layout = QtWidgets.QVBoxLayout()
+
+        self._scene = QtWidgets.QGraphicsScene(self)
+        self._target_widget = MaskedLabelDrawer(self, self._scene, 
+            self._number_of_targets, self._target_distance, 
+            self._target_hsize)
+
+        # Connect the signals to a slot
+        for ii in range(self._number_of_targets + 1):
+            self._target_widget.target_crossed.connect(self.crossed_target)
+
+    def resizeEvent(self, event):
+        cSize = self.size()
+        self._target_widget.setFixedHeight(cSize.height())
+        self._target_widget.setFixedWidth(cSize.width())
+        self._target_widget.rebuild()
+        super().resizeEvent(event)
+
+    def crossed_target(self, idx):
+        if (idx == 0 & self._trial_num < self._trial_num_max):
+            if (self._trial_started == False):
+                self._target_widget.set_target_color(idx, QtGui.QColor(255, 0, 0, 255))
+                # Start a time to wait for the targets to appear
+                delta1 = np.random.randint(100, 500)
+                
+                self._target_timer.setInterval(delta1)
+                self._target_timer.start()
+                self._cancel_timer.start()
+                '''QtCore.QTimer.singleShot(delta1, self.display_single_target)'''
+                self._trial_started = True
+                self._trial_data ["delta1"] = delta1
+        elif (self._trial_num >= self._trial_num_max):
+            self._parent.close()
+            '''self._parent._app.quit()'''
+            
+        else:
+            if (self._trial_started == True):
+                self._cancel_timer.stop()
+                self._mask_timer.stop()
+                self._trial_started = False
+                self._target_widget.clear_color()
+                self._target_widget.rebuild()
+                self._target_crossed_time = datetime.datetime.now()
+                latency = (self._target_crossed_time - self._target_show_time).microseconds
+                self._trial_data ["latency"] = latency
+                self._trial_data ["crossed_target_number"] = idx
+                self._trial_data ["crossed_target_number"] = idx == self._trial_data ["display_target_number"]
+                self._trial_num += 1
+                print(self._trial_num)
+                self.save_trials()
+                
+    
+    def cancel_trial(self):
+        self._trial_data ["latency"] = -1
+        self._trial_data ["crossed_target_number"] = -1
+        self._trial_data ["crossed_target_number"] = False
+        self._trial_started = False
+        self._target_widget.clear_color()
+        self._target_widget.rebuild()
+        self.save_trials()
+    
+    def save_trials(self):
+        self._target_timer.stop()
+        self._cancel_timer.stop()
+        self._mask_timer.stop()
+        output_string = ""
+        output_string += str(self._trial_data ["delta1"]) + ";"
+        output_string += str(self._trial_data ["delta2"]) + ";"
+        output_string += str(self._trial_data ["latency"]) + ";"
+        output_string += str(self._trial_data ["crossed_target_number"]) + ";"
+        output_string += str(self._trial_data ["display_target_number"])
+        
+        if self._filename is not None:
+            with open(self._filename, 'a+') as f:
+                f.write(output_string)
+                f.write("\n")
+        else:
+            print(output_string)
+
+    def display_single_target(self):
+        # Select one target randomly
+        tar_to_show = np.random.permutation(self._number_of_targets)[0] + 1
+        self._target_widget.set_target_color(tar_to_show, QtGui.QColor(125, 125, 125, 255))
+        # Start a time to wait for the remaining targets to appear
+        delta2 = np.random.randint(30, 300)
+        self._mask_timer.setInterval(delta2)
+        self._mask_timer.start()
+        self._cancel_timer.start()
+        '''QtCore.QTimer.singleShot(delta2, self.show_all_targets)'''
+        self._target_show_time = datetime.datetime.now()
+        self._trial_data ["delta2"] = delta2
+        self._trial_data ["display_target_number"] = tar_to_show
+        
+
+    def show_all_targets(self):
+        for ii in range(self._number_of_targets):
+            self._target_widget.set_target_color(ii + 1, QtGui.QColor(125, 125, 125, 125))
+
+
+
+class MaskedLabApplication(QtWidgets.QMainWindow):
+    def __init__(self, parent=None, filename=None, app = None, args = []):
+        super().__init__(parent)
+
+
+        self._central_widget = MaskedLabelWidget(self, filename)
+
+        self._app = app
+        self._isFullScreen = False
+        self._filename = filename
+
+        self.setGeometry(300, 300, 250, 150)
+
+        self.setCentralWidget(self._central_widget)
+
+    def keyPressEvent(self, e):
+        #print(e.key())
+        if (e.key() == 70): # Pressing "f" to switch full screen not full screen
+            self.swap_fullscreen()
+            
+
+    def swap_fullscreen(self):
+        self._isFullScreen = not self._isFullScreen
+        if (self._isFullScreen):
+            self.showFullScreen()
+        else:
+            self.showNormal()
+ 
+
+
+if __name__ == "__main__":
+    app = QtWidgets.QApplication(sys.argv)
+    w = MaskedLabApplication(filename="/Users/thirionmac/Documents/CLH005.data", app = app)
+#don't forget to change the pathway!!!!!!!!!!!!!
+    w.show()
+
+    app.exec_()
+    
+    sys.exit()
+    
